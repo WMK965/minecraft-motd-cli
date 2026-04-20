@@ -31,6 +31,7 @@ pub struct MotdJavaInfo {
 
 impl MotdJavaInfo {
     /// 创建一个离线状态的 MotdJavaInfo
+    #[allow(dead_code)]
     fn offline() -> Self {
         Self {
             status: "offline".to_string(),

@@ -34,6 +34,7 @@ pub struct MotdBEInfo {
 
 impl MotdBEInfo {
     /// 创建一个离线状态的 MotdBEInfo
+    #[allow(dead_code)]
     fn offline() -> Self {
         Self {
             status: "offline".to_string(),
