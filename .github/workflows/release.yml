@@ -1,0 +1,190 @@
+name: Build and Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_type:
+        description: "Release type"
+        required: true
+        type: choice
+        options:
+          - prerelease
+          - release
+        default: prerelease
+      version:
+        description: "Formal release version, e.g. 1.0.0 or v1.0.0 (only used when release_type=release)"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  BIN_NAME: motd-cli
+
+jobs:
+  build:
+    name: Build ${{ matrix.label }}
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            label: Windows x64
+            archive_name: motd-cli-windows-x86_64.zip
+            built_binary: motd-cli.exe
+            packaged_binary: motd-cli.exe
+
+          - os: ubuntu-24.04
+            label: Linux x64
+            archive_name: motd-cli-linux-x86_64.tar.gz
+            built_binary: motd-cli
+            packaged_binary: motd-cli
+
+          - os: ubuntu-24.04-arm
+            label: Linux arm64
+            archive_name: motd-cli-linux-aarch64.tar.gz
+            built_binary: motd-cli
+            packaged_binary: motd-cli
+
+          - os: macos-15-intel
+            label: macOS x64
+            archive_name: motd-cli-macos-x86_64.tar.gz
+            built_binary: motd-cli
+            packaged_binary: motd-cli
+
+          - os: macos-15
+            label: macOS arm64
+            archive_name: motd-cli-macos-aarch64.tar.gz
+            built_binary: motd-cli
+            packaged_binary: motd-cli
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Package artifact (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp "target/release/${{ matrix.built_binary }}" "dist/${{ matrix.packaged_binary }}"
+          cp README.md dist/
+          cp LICENSE dist/
+          tar -czf "${{ matrix.archive_name }}" -C dist .
+
+      - name: Package artifact (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path dist | Out-Null
+          Copy-Item "target/release/${{ matrix.built_binary }}" "dist/${{ matrix.packaged_binary }}"
+          Copy-Item README.md dist/
+          Copy-Item LICENSE dist/
+          Compress-Archive -Path dist/* -DestinationPath "${{ matrix.archive_name }}" -Force
+
+      - name: Upload packaged artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.archive_name }}
+          path: ${{ matrix.archive_name }}
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Resolve version metadata
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          RELEASE_TYPE="${{ inputs.release_type }}"
+          INPUT_VERSION="${{ inputs.version }}"
+          SHORT_SHA="${GITHUB_SHA::7}"
+
+          if [[ "$RELEASE_TYPE" == "release" ]]; then
+            if [[ -z "$INPUT_VERSION" ]]; then
+              echo "version is required when release_type=release"
+              exit 1
+            fi
+
+            if [[ "$INPUT_VERSION" == v* ]]; then
+              TAG="$INPUT_VERSION"
+              VERSION="${INPUT_VERSION#v}"
+            else
+              TAG="v$INPUT_VERSION"
+              VERSION="$INPUT_VERSION"
+            fi
+
+            TITLE="Release $TAG"
+            IS_PRERELEASE="false"
+          else
+            VERSION="$SHORT_SHA"
+            TAG="pre-$SHORT_SHA"
+            TITLE="Pre-release $SHORT_SHA"
+            IS_PRERELEASE="true"
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "title=$TITLE" >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=$IS_PRERELEASE" >> "$GITHUB_OUTPUT"
+
+      - name: Generate SHA256SUMS.txt
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-assets
+          sha256sum \
+            motd-cli-windows-x86_64.zip \
+            motd-cli-linux-x86_64.tar.gz \
+            motd-cli-linux-aarch64.tar.gz \
+            motd-cli-macos-x86_64.tar.gz \
+            motd-cli-macos-aarch64.tar.gz \
+            > SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          EXTRA_ARGS=()
+          if [[ "${{ steps.meta.outputs.is_prerelease }}" == "true" ]]; then
+            EXTRA_ARGS+=(--prerelease)
+          fi
+
+          gh release create "${{ steps.meta.outputs.tag }}" \
+            release-assets/motd-cli-windows-x86_64.zip \
+            release-assets/motd-cli-linux-x86_64.tar.gz \
+            release-assets/motd-cli-linux-aarch64.tar.gz \
+            release-assets/motd-cli-macos-x86_64.tar.gz \
+            release-assets/motd-cli-macos-aarch64.tar.gz \
+            release-assets/SHA256SUMS.txt \
+            --title "${{ steps.meta.outputs.title }}" \
+            --target "${{ github.sha }}" \
+            --generate-notes \
+            "${EXTRA_ARGS[@]}"
