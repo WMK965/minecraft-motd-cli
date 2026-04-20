@@ -21,6 +21,7 @@ permissions:
 
 env:
   BIN_NAME: motd-cli
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
@@ -69,6 +70,7 @@ jobs:
         uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
+          rustflags: ""
 
       - name: Build release binary
         run: cargo build --release --locked
@@ -95,7 +97,7 @@ jobs:
           Compress-Archive -Path dist/* -DestinationPath "${{ matrix.archive_name }}" -Force
 
       - name: Upload packaged artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.archive_name }}
           path: ${{ matrix.archive_name }}
@@ -108,8 +110,11 @@ jobs:
     needs: build
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
       - name: Download packaged artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           path: release-assets
           merge-multiple: true
@@ -168,6 +173,7 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
           set -euo pipefail
@@ -184,6 +190,7 @@ jobs:
             release-assets/motd-cli-macos-x86_64.tar.gz \
             release-assets/motd-cli-macos-aarch64.tar.gz \
             release-assets/SHA256SUMS.txt \
+            --repo "${{ github.repository }}" \
             --title "${{ steps.meta.outputs.title }}" \
             --target "${{ github.sha }}" \
             --generate-notes \
