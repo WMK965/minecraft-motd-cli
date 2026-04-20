@@ -2,7 +2,7 @@
 /// 通过 TCP Server List Ping 获取 Java 版服务器信息
 /// 参考: https://wiki.vg/Server_List_Ping
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -10,6 +10,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// MotdJava 信息
 #[allow(dead_code)]
+#[derive(Serialize)]
 pub struct MotdJavaInfo {
     /// 服务器状态
     pub status: String,
@@ -27,6 +28,9 @@ pub struct MotdJavaInfo {
     pub max: i32,
     /// 连接延迟 (毫秒)
     pub delay: i64,
+    /// 服务器类型
+    #[serde(rename = "type")]
+    pub server_type: String,
 }
 
 impl MotdJavaInfo {
@@ -42,6 +46,7 @@ impl MotdJavaInfo {
             online: 0,
             max: 0,
             delay: 0,
+            server_type: "Java Edition".to_string(),
         }
     }
 }
@@ -313,6 +318,7 @@ pub fn motd_java(host: &str, verbose: bool) -> Result<MotdJavaInfo, JavaError> {
         online: resp.players.online,
         max: resp.players.max,
         delay: end_time - start_time,
+        server_type: "Java Edition".to_string(),
     })
 }
 

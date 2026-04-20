@@ -1,12 +1,14 @@
 /// Bedrock Edition MOTD 协议实现
 /// 通过 UDP RakNet Unconnected Ping 获取基岩版服务器信息
 
+use serde::Serialize;
 use std::fmt;
 use std::net::UdpSocket;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// MotdBE 信息
 #[allow(dead_code)]
+#[derive(Serialize)]
 pub struct MotdBEInfo {
     /// 服务器状态 (online/offline)
     pub status: String,
@@ -30,6 +32,9 @@ pub struct MotdBEInfo {
     pub server_unique_id: String,
     /// 连接延迟 (毫秒)
     pub delay: i64,
+    /// 服务器类型
+    #[serde(rename = "type")]
+    pub server_type: String,
 }
 
 impl MotdBEInfo {
@@ -48,6 +53,7 @@ impl MotdBEInfo {
             game_mode: String::new(),
             server_unique_id: String::new(),
             delay: 0,
+            server_type: "Bedrock Edition".to_string(),
         }
     }
 }
@@ -234,5 +240,6 @@ pub fn motd_be(host: &str, verbose: bool) -> Result<MotdBEInfo, BedrockError> {
         game_mode,
         server_unique_id,
         delay: end_time - start_time,
+        server_type: "Bedrock Edition".to_string(),
     })
 }

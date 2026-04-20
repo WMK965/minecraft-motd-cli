@@ -4,29 +4,29 @@
 
 mod protocol;
 mod util;
+mod i18n;
 
 use std::env;
 use std::net::ToSocketAddrs;
 
-const VERSION: &str = env!("CARGO_PKG_VERSION");
-
 /// 打印帮助信息
-fn print_help() {
-    println!("motd-cli v{} - 像 PING 一样获取我的世界服务器 MOTD 信息", VERSION);
+fn print_help(i18n: &i18n::I18n) {
+    println!("motd-cli - {}", i18n.help_desc);
     println!();
-    println!("用法:");
-    println!("  motd-cli <be|je> <地址[:端口]>    指定服务器类型查询");
-    println!("  motd-cli <地址[:端口]>            自动推断服务器类型");
+    println!("{}", i18n.help_usage);
+    println!("{}", i18n.help_usage_1);
+    println!("{}", i18n.help_usage_2);
     println!();
-    println!("参数:");
-    println!("  be                 基岩版服务器 (默认端口: 19132)");
-    println!("  je                 Java版服务器 (默认端口: 25565)");
+    println!("{}", i18n.help_args);
+    println!("{}", i18n.help_arg_be);
+    println!("{}", i18n.help_arg_je);
     println!();
-    println!("选项:");
-    println!("  -h, --help         显示此帮助信息");
-    println!("  -v, --verbose      显示详细调试信息");
+    println!("{}", i18n.help_opts);
+    println!("{}", i18n.help_opt_h);
+    println!("{}", i18n.help_opt_v);
+    println!("{}", i18n.help_opt_j);
     println!();
-    println!("示例:");
+    println!("{}", i18n.help_examples);
     println!("  motd-cli be play.craftersmc.net:19132");
     println!("  motd-cli je play.hypixel.net");
     println!("  motd-cli play.craftersmc.net");
@@ -43,51 +43,68 @@ fn format_mc_text(text: &str, use_color: bool) -> String {
 }
 
 /// 打印基岩版服务器状态（多行格式）
-fn get_be_serve(address: &str, verbose: bool, use_color: bool) {
-    // 补全端口
+fn get_be_serve(address: &str, verbose: bool, use_color: bool, json_out: bool, i18n: &i18n::I18n) {
     let address = util::complete_port(address, 19132);
-
-    // 获取 IP 地址
     let (host, port) = util::split_address(&address);
     match (host, port).to_socket_addrs() {
         Ok(mut addrs) => {
             if let Some(addr) = addrs.next() {
                 let ip = addr.ip();
-                if host == ip.to_string() {
-                    println!("正在获取 {} 的 MOTD 信息...", address);
-                } else {
-                    println!("正在获取 {} [{}:{}] 的 MOTD 信息...", address, ip, port);
+                if !json_out {
+                    if host == ip.to_string() {
+                        println!("{}", i18n.fetching.replace("{}", &address));
+                    } else {
+                        println!("{}", i18n.fetching_ip.replacen("{}", &address, 1).replacen("{}", &ip.to_string(), 1).replacen("{}", &port.to_string(), 1));
+                    }
                 }
             }
         }
         Err(e) => {
-            println!("无法连接到服务器，请检查地址是否正确");
+            if json_out {
+                println!(r#"{{"status": "offline", "error": "{}"}}"#, e);
+            } else {
+                println!("{}", i18n.connect_fail);
+            }
             if verbose {
-                eprintln!("[verbose] DNS 解析失败: {}", e);
+                eprintln!("[verbose] {}: {}", i18n.dns_fail, e);
             }
             return;
         }
     }
 
-    println!();
+    if !json_out {
+        println!();
+    }
 
-    // 获取服务器信息
     match protocol::bedrock::motd_be(&address, verbose) {
         Ok(motd) => {
-            if motd.status == "offline" {
-                println!("服务器离线");
+            if json_out {
+                let mut json_motd = motd;
+                if !use_color {
+                    json_motd.motd = util::strip_mc_color(&json_motd.motd);
+                    json_motd.level_name = util::strip_mc_color(&json_motd.level_name);
+                }
+                println!("{}", serde_json::to_string(&json_motd).unwrap());
             } else {
-                println!("  延迟:      {}ms", motd.delay);
-                println!("  在线人数:  {}/{}", motd.online, motd.max);
-                println!("  协议版本:  {}", motd.agreement);
-                println!("  游戏版本:  {}", motd.version);
-                println!("  地图名称:  {}", format_mc_text(&motd.level_name, use_color));
-                println!("  游戏模式:  {}", motd.game_mode);
-                println!("  MOTD:      {}", format_mc_text(&motd.motd, use_color));
+                if motd.status == "offline" {
+                    println!("{}", i18n.offline);
+                } else {
+                    println!("  {}:      {}ms", i18n.delay, motd.delay);
+                    println!("  {}:  {}/{}", i18n.online, motd.online, motd.max);
+                    println!("  {}:  {}", i18n.protocol, motd.agreement);
+                    println!("  {}:  {}", i18n.version, motd.version);
+                    println!("  {}:  {}", i18n.level_name, format_mc_text(&motd.level_name, use_color));
+                    println!("  {}:  {}", i18n.game_mode, motd.game_mode);
+                    println!("  {}:      {}", i18n.motd, format_mc_text(&motd.motd, use_color));
+                }
             }
         }
         Err(e) => {
-            println!("无法连接到服务器，请检查地址是否正确");
+            if json_out {
+                println!(r#"{{"status": "offline", "error": "{}"}}"#, e);
+            } else {
+                println!("{}", i18n.connect_fail);
+            }
             if verbose {
                 eprintln!("[verbose] 错误详情: {}", e);
             }
@@ -96,49 +113,65 @@ fn get_be_serve(address: &str, verbose: bool, use_color: bool) {
 }
 
 /// 打印 Java 版服务器状态（多行格式）
-fn get_je_serve(address: &str, verbose: bool, use_color: bool) {
-    // 补全端口
+fn get_je_serve(address: &str, verbose: bool, use_color: bool, json_out: bool, i18n: &i18n::I18n) {
     let address = util::complete_port(address, 25565);
-
-    // 获取 IP 地址
     let (host, port) = util::split_address(&address);
     match (host, port).to_socket_addrs() {
         Ok(mut addrs) => {
             if let Some(addr) = addrs.next() {
                 let ip = addr.ip();
-                if host == ip.to_string() {
-                    println!("正在获取 {} 的 MOTD 信息...", address);
-                } else {
-                    println!("正在获取 {} [{}:{}] 的 MOTD 信息...", address, ip, port);
+                if !json_out {
+                    if host == ip.to_string() {
+                        println!("{}", i18n.fetching.replace("{}", &address));
+                    } else {
+                        println!("{}", i18n.fetching_ip.replacen("{}", &address, 1).replacen("{}", &ip.to_string(), 1).replacen("{}", &port.to_string(), 1));
+                    }
                 }
             }
         }
         Err(e) => {
-            println!("无法连接到服务器，请检查地址是否正确");
+            if json_out {
+                println!(r#"{{"status": "offline", "error": "{}"}}"#, e);
+            } else {
+                println!("{}", i18n.connect_fail);
+            }
             if verbose {
-                eprintln!("[verbose] DNS 解析失败: {}", e);
+                eprintln!("[verbose] {}: {}", i18n.dns_fail, e);
             }
             return;
         }
     }
 
-    println!();
+    if !json_out {
+        println!();
+    }
 
-    // 获取服务器信息
     match protocol::java::motd_java(&address, verbose) {
         Ok(motd) => {
-            if motd.status == "offline" {
-                println!("服务器离线");
+            if json_out {
+                let mut json_motd = motd;
+                if !use_color {
+                    json_motd.motd = util::strip_mc_color(&json_motd.motd);
+                }
+                println!("{}", serde_json::to_string(&json_motd).unwrap());
             } else {
-                println!("  延迟:      {}ms", motd.delay);
-                println!("  在线人数:  {}/{}", motd.online, motd.max);
-                println!("  协议版本:  {}", motd.agreement);
-                println!("  游戏版本:  {}", motd.version);
-                println!("  MOTD:      {}", format_mc_text(&motd.motd, use_color));
+                if motd.status == "offline" {
+                    println!("{}", i18n.offline);
+                } else {
+                    println!("  {}:      {}ms", i18n.delay, motd.delay);
+                    println!("  {}:  {}/{}", i18n.online, motd.online, motd.max);
+                    println!("  {}:  {}", i18n.protocol, motd.agreement);
+                    println!("  {}:  {}", i18n.version, motd.version);
+                    println!("  {}:      {}", i18n.motd, format_mc_text(&motd.motd, use_color));
+                }
             }
         }
         Err(e) => {
-            println!("无法连接到服务器，请检查地址是否正确");
+            if json_out {
+                println!(r#"{{"status": "offline", "error": "{}"}}"#, e);
+            } else {
+                println!("{}", i18n.connect_fail);
+            }
             if verbose {
                 eprintln!("[verbose] 错误详情: {}", e);
             }
@@ -147,8 +180,7 @@ fn get_je_serve(address: &str, verbose: bool, use_color: bool) {
 }
 
 /// 推断模式：先尝试 BE，再尝试 JE
-fn guess(address: &str, verbose: bool, use_color: bool) {
-    // 尝试基岩版
+fn guess(address: &str, verbose: bool, use_color: bool, json_out: bool, i18n: &i18n::I18n) {
     let be_address = util::complete_port(address, 19132);
     let (host, port) = util::split_address(&be_address);
 
@@ -157,94 +189,124 @@ fn guess(address: &str, verbose: bool, use_color: bool) {
             if let Some(addr) = addrs.next() {
                 addr.ip().to_string()
             } else {
-                println!("无法连接到服务器，请检查地址是否正确");
+                if json_out {
+                    println!(r#"{{"status": "offline", "error": "DNS fallback"}}"#);
+                } else {
+                    println!("{}", i18n.connect_fail);
+                }
                 return;
             }
         }
         Err(e) => {
-            println!("无法连接到服务器，请检查地址是否正确");
+            if json_out {
+                println!(r#"{{"status": "offline", "error": "{}"}}"#, e);
+            } else {
+                println!("{}", i18n.connect_fail);
+            }
             if verbose {
-                eprintln!("[verbose] DNS 解析失败: {}", e);
+                eprintln!("[verbose] {}: {}", i18n.dns_fail, e);
             }
             return;
         }
     };
 
     let print_trying_tips = |addr: &str, host: &str, ip: &str, port: u16| {
-        if host == ip {
-            println!("正在获取 {} 的 MOTD 信息...", addr);
-        } else {
-            println!("正在获取 {} [{}:{}] 的 MOTD 信息...", addr, ip, port);
+        if !json_out {
+            if host == ip {
+                println!("{}", i18n.fetching.replace("{}", addr));
+            } else {
+                println!("{}", i18n.fetching_ip.replacen("{}", addr, 1).replacen("{}", ip, 1).replacen("{}", &port.to_string(), 1));
+            }
         }
     };
 
     if verbose {
-        eprintln!("[verbose] 推断模式: 先尝试基岩版...");
+        eprintln!("[verbose] {}", i18n.guess_be);
     }
 
-    // 获取 BE 服务器信息
     match protocol::bedrock::motd_be(&be_address, verbose) {
-        Ok(be_motd) if be_motd.status != "offline" => {
+        Ok(motd) if motd.status != "offline" => {
             print_trying_tips(&be_address, host, &ip_str, port);
-            println!();
-            println!("  类型:      Bedrock Edition");
-            println!("  延迟:      {}ms", be_motd.delay);
-            println!("  在线人数:  {}/{}", be_motd.online, be_motd.max);
-            println!("  协议版本:  {}", be_motd.agreement);
-            println!("  游戏版本:  {}", be_motd.version);
-            println!("  地图名称:  {}", format_mc_text(&be_motd.level_name, use_color));
-            println!("  游戏模式:  {}", be_motd.game_mode);
-            println!("  MOTD:      {}", format_mc_text(&be_motd.motd, use_color));
+            if json_out {
+                let mut json_motd = motd;
+                if !use_color {
+                    json_motd.motd = util::strip_mc_color(&json_motd.motd);
+                    json_motd.level_name = util::strip_mc_color(&json_motd.level_name);
+                }
+                println!("{}", serde_json::to_string(&json_motd).unwrap());
+            } else {
+                println!();
+                println!("  类型:      {}", i18n.type_be);
+                println!("  {}:      {}ms", i18n.delay, motd.delay);
+                println!("  {}:  {}/{}", i18n.online, motd.online, motd.max);
+                println!("  {}:  {}", i18n.protocol, motd.agreement);
+                println!("  {}:  {}", i18n.version, motd.version);
+                println!("  {}:  {}", i18n.level_name, format_mc_text(&motd.level_name, use_color));
+                println!("  {}:  {}", i18n.game_mode, motd.game_mode);
+                println!("  {}:      {}", i18n.motd, format_mc_text(&motd.motd, use_color));
+            }
             return;
         }
         Ok(_) => {
             if verbose {
-                eprintln!("[verbose] 基岩版返回离线状态，尝试 Java 版...");
+                eprintln!("[verbose] {}", i18n.be_offline);
             }
         }
         Err(e) => {
             if verbose {
-                eprintln!("[verbose] 基岩版查询失败: {}", e);
-                eprintln!("[verbose] 尝试 Java 版...");
+                eprintln!("[verbose] {}: {}", i18n.be_fail, e);
+                eprintln!("[verbose] {}", i18n.guess_je);
             }
         }
     }
 
-    // 尝试 Java 版
     let je_address = util::complete_port(address, 25565);
     let (_, je_port) = util::split_address(&je_address);
 
     match protocol::java::motd_java(&je_address, verbose) {
-        Ok(je_motd) if je_motd.status != "offline" => {
+        Ok(motd) if motd.status != "offline" => {
             print_trying_tips(&je_address, host, &ip_str, je_port);
-            println!();
-            println!("  类型:      Java Edition");
-            println!("  延迟:      {}ms", je_motd.delay);
-            println!("  在线人数:  {}/{}", je_motd.online, je_motd.max);
-            println!("  协议版本:  {}", je_motd.agreement);
-            println!("  游戏版本:  {}", je_motd.version);
-            println!("  MOTD:      {}", format_mc_text(&je_motd.motd, use_color));
+            if json_out {
+                let mut json_motd = motd;
+                if !use_color {
+                    json_motd.motd = util::strip_mc_color(&json_motd.motd);
+                }
+                println!("{}", serde_json::to_string(&json_motd).unwrap());
+            } else {
+                println!();
+                println!("  类型:      {}", i18n.type_je);
+                println!("  {}:      {}ms", i18n.delay, motd.delay);
+                println!("  {}:  {}/{}", i18n.online, motd.online, motd.max);
+                println!("  {}:  {}", i18n.protocol, motd.agreement);
+                println!("  {}:  {}", i18n.version, motd.version);
+                println!("  {}:      {}", i18n.motd, format_mc_text(&motd.motd, use_color));
+            }
             return;
         }
         Ok(_) => {
             if verbose {
-                eprintln!("[verbose] Java 版返回离线状态");
+                eprintln!("[verbose] {}", i18n.je_offline);
             }
         }
         Err(e) => {
             if verbose {
-                eprintln!("[verbose] Java 版查询也失败: {}", e);
+                eprintln!("[verbose] {}: {}", i18n.je_fail, e);
             }
         }
     }
 
-    println!("无法连接到服务器，请检查地址是否正确");
+    if json_out {
+        println!(r#"{{"status": "offline", "error": "Both BE and JE offline"}}"#);
+    } else {
+        println!("{}", i18n.connect_fail);
+    }
 }
 
 /// 解析命令行参数
 struct Args {
     verbose: bool,
-    version: Option<String>, // "be", "je", or None for guess
+    json: bool,
+    version: Option<String>,
     address: Option<String>,
     show_help: bool,
 }
@@ -254,6 +316,7 @@ fn parse_args() -> Args {
 
     let mut args = Args {
         verbose: false,
+        json: false,
         version: None,
         address: None,
         show_help: false,
@@ -265,6 +328,7 @@ fn parse_args() -> Args {
         match arg.as_str() {
             "-h" | "--help" => args.show_help = true,
             "-v" | "--verbose" => args.verbose = true,
+            "-j" | "--json" => args.json = true,
             _ => positional.push(arg.clone()),
         }
     }
@@ -287,22 +351,26 @@ fn parse_args() -> Args {
 
 fn main() {
     let args = parse_args();
+    let i18n_lang = i18n::get_i18n();
 
     if args.show_help || args.address.is_none() {
-        print_help();
+        print_help(i18n_lang);
         return;
     }
 
     let address = args.address.unwrap();
-    let use_color = util::supports_ansi_color();
+    // JSON output doesn't need ANSI styling unless requested, but raw Minecraft styling might be wanted or unwanted.
+    // The user will usually prefer no ANSI colors in terminal. We strip color format in json serialization if use_color is true? 
+    // Usually scripts parse plain text if they use json. Let's make use_color=false force strip color.
+    let use_color = if args.json { false } else { util::supports_ansi_color() };
 
     if args.verbose {
-        eprintln!("[verbose] 终端颜色支持: {}", use_color);
+        eprintln!("[verbose] 终端颜色支持: {}", if args.json { false } else { util::supports_ansi_color() });
     }
 
     match args.version.as_deref() {
-        Some("be") => get_be_serve(&address, args.verbose, use_color),
-        Some("je") => get_je_serve(&address, args.verbose, use_color),
-        _ => guess(&address, args.verbose, use_color),
+        Some("be") => get_be_serve(&address, args.verbose, use_color, args.json, i18n_lang),
+        Some("je") => get_je_serve(&address, args.verbose, use_color, args.json, i18n_lang),
+        _ => guess(&address, args.verbose, use_color, args.json, i18n_lang),
     }
 }

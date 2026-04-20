@@ -7,7 +7,7 @@
 前往 [releases](https://github.com/WMK965/minecraft-motd-cli/releases) 下载最新版本解压即可
 ```
 # motd-cli
-motd-cli v1.0.0 - 像 PING 一样获取我的世界服务器 MOTD 信息
+motd-cli - 像 PING 一样获取我的世界服务器 MOTD 信息
 
 用法:
   motd-cli <be|je> <地址[:端口]>    指定服务器类型查询
@@ -20,6 +20,7 @@ motd-cli v1.0.0 - 像 PING 一样获取我的世界服务器 MOTD 信息
 选项:
   -h, --help         显示此帮助信息
   -v, --verbose      显示详细调试信息
+  -j, --json         以 JSON 格式输出结果
 
 示例:
   motd-cli be play.craftersmc.net:19132
@@ -27,7 +28,7 @@ motd-cli v1.0.0 - 像 PING 一样获取我的世界服务器 MOTD 信息
   motd-cli play.craftersmc.net
   motd-cli -v be play.craftersmc.net
 
-# motd je play.hypixel.net
+# motd-cli je play.hypixel.net
 正在获取 play.hypixel.net:25565 [172.65.197.160:25565] 的 MOTD 信息...
 
   延迟:      196ms
@@ -36,6 +37,9 @@ motd-cli v1.0.0 - 像 PING 一样获取我的世界服务器 MOTD 信息
   游戏版本:  Requires MC 1.8 / 1.21
   MOTD:                       Hypixel Network [1.8/1.21]
        EASTER EVENT + ANNIVERSARY BINGO
+
+# motd-cli -j play.craftersmc.net
+{"status":"online","host":"play.craftersmc.net:19132","motd":"CraftersMC ✧ SkyBlock: End Beyond!","agreement":944,"version":"1.26.10","online":270,"max":1000,"level_name":"Play Now!","game_mode":"Survival","server_unique_id":"5800216507803989860","delay":276,"type":"Bedrock Edition"}
 ```
 
 ## ⚙️ 构建程序
