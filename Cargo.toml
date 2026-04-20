@@ -1,0 +1,16 @@
+[package]
+name = "motd-cli"
+version = "1.0.0"
+edition = "2021"
+description = "像PING一样获取我的世界服务器MOTD信息"
+repository = "https://github.com/BlackBEDevelopment/motd-cli"
+license = "GPL-3.0"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
