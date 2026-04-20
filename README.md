@@ -1,7 +1,7 @@
 # motd-cli
 像 PING 一样获取我的世界服务器 MOTD 信息
 
-由 [965](https://github.com/WMK965) 基于 [BlackBEDevelopment/motd-cli](https://github.com/BlackBEDevelopment/motd-cli) 使用 Rust 重构，添加 verbose 和 help 模式
+由 [965](https://github.com/WMK965) 基于 [BlackBEDevelopment/motd-cli](https://github.com/BlackBEDevelopment/motd-cli) 使用 Rust 重构
 
 ## 🛫 如何使用
 前往 [releases](https://github.com/WMK965/minecraft-motd-cli/releases) 下载最新版本解压即可
